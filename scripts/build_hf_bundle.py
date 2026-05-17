@@ -9,9 +9,9 @@ def main():
     if not os.path.exists(TARGET_DIR):
         os.makedirs(TARGET_DIR)
     else:
-        # Clear old files but preserve the .git repository configuration!
+        # Clear old files but preserve the .git and .github repository configurations!
         for item in os.listdir(TARGET_DIR):
-            if item == ".git":
+            if item in (".git", ".github"):
                 continue
             item_path = os.path.join(TARGET_DIR, item)
             if os.path.isdir(item_path):
@@ -48,7 +48,7 @@ def main():
             shutil.copy(src, dst)
 
     # 1. Write the custom Hugging Face Dockerfile (downloads rnnoise from GitHub!)
-    dockerfile_content = """FROM python:3.12-slim
+    dockerfile_content = """FROM python:3.12-slim-bookworm
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \\
