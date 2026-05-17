@@ -1,22 +1,38 @@
-FROM python:3.12-slim-bookworm
+FROM ubuntu:22.04
 
-# Install system dependencies
+# Avoid interactive prompts during apt install
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies (including deadsnakes PPA for Python 3.12!)
 RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    curl \
+    git \
+    procps \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y \
+    python3.12 \
+    python3.12-dev \
+    python3.12-distutils \
     postgresql \
     postgresql-contrib \
     redis-server \
     asterisk \
-    curl \
-    git \
-    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up working directory
 WORKDIR /app
 
+# Link python and python3 to python3.12
+RUN ln -sf /usr/bin/python3.12 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python
+
 # Copy requirement files first for caching
 COPY ./api/requirements.txt /app/api/requirements.txt
-RUN pip install --no-cache-dir -r /app/api/requirements.txt
+
+# Ensure pip is installed for Python 3.12 and install requirements
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 \
+    && python3.12 -m pip install --no-cache-dir -r /app/api/requirements.txt
 
 # Copy application code
 COPY . /app
