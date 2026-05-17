@@ -111,6 +111,7 @@ set -e
 # Set environment variables for the application
 export DATABASE_URL="postgresql+asyncpg://dograh:dineshadmissionspassword123@localhost:5432/dograh"
 export REDIS_URL="redis://localhost:6379"
+export PYTHONPATH=/app
 
 echo "Starting PostgreSQL..."
 mkdir -p /var/run/postgresql
@@ -144,8 +145,8 @@ echo "Starting Asterisk..."
 asterisk
 
 echo "Running Alembic Database Migrations..."
-cd /app/api
-python -m alembic upgrade head || true
+cd /app
+python -m alembic -c /app/api/alembic.ini upgrade head || true
 
 echo "Starting FastAPI Uvicorn Application on port 7860..."
 exec uvicorn api.app:app --host 0.0.0.0 --port 7860
