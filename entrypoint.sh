@@ -6,6 +6,13 @@ export DATABASE_URL="postgresql+asyncpg://dograh:dineshadmissionspassword123@loc
 export REDIS_URL="redis://localhost:6379"
 export PYTHONPATH=/app
 
+# Default storage configuration for FastAPI startup validation
+export MINIO_ENDPOINT="localhost:9000"
+export MINIO_PUBLIC_ENDPOINT="http://localhost:9000"
+export MINIO_ACCESS_KEY="minioadmin"
+export MINIO_SECRET_KEY="minioadmin"
+export MINIO_BUCKET="voice-audio"
+
 echo "Starting PostgreSQL..."
 mkdir -p /var/run/postgresql
 chown -R postgres:postgres /var/run/postgresql
@@ -24,6 +31,7 @@ echo "Setting up Postgres Database and Permissions..."
 su - postgres -c "psql -c \"CREATE DATABASE dograh;\"" || true
 su - postgres -c "psql -c \"CREATE USER dograh WITH PASSWORD 'dineshadmissionspassword123';\"" || true
 su - postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE dograh TO dograh;\"" || true
+su - postgres -c "psql -d dograh -c \"CREATE EXTENSION IF NOT EXISTS vector;\"" || true
 
 echo "Starting Redis Server..."
 service redis-server start
@@ -40,6 +48,11 @@ asterisk
 echo "Running Alembic Database Migrations..."
 cd /app
 python -m alembic -c /app/api/alembic.ini upgrade head || true
+
+echo "Auto-updating Asterisk ARI telephony configurations to correct local credentials..."
+su - postgres -c "psql -d dograh" << 'EOF' || true
+UPDATE telephony_configurations SET credentials = '{"ari_endpoint": "http://localhost:8088", "app_name": "dograh", "app_password": "dineshadmissionspassword123", "ws_client_name": "dograh"}'::json, updated_at = NOW() WHERE provider = 'ari';
+EOF
 
 echo "Starting FastAPI Uvicorn Application on port 7860..."
 exec uvicorn api.app:app --host 0.0.0.0 --port 7860

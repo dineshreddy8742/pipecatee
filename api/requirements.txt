@@ -23,4 +23,3 @@ aiohttp>=3.11.11
 numpy>=1.26.4
 soundfile>=0.13.0
 pyjwt>=2.10.1
-pipecat-ai>=0.5.2
