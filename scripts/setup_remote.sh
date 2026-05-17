@@ -1,0 +1,249 @@
+#!/bin/bash
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}"
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║                   Dograh Remote Setup                        ║"
+echo "║      Automated HTTPS deployment with TURN server             ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo -e "${NC}"
+
+# Get the public IP address (skip prompt if SERVER_IP is already set)
+if [[ -z "$SERVER_IP" ]]; then
+    echo -e "${YELLOW}Enter your server's public IP address:${NC}"
+    read -p "> " SERVER_IP
+fi
+
+if [[ -z "$SERVER_IP" ]]; then
+    echo -e "${RED}Error: IP address cannot be empty${NC}"
+    exit 1
+fi
+
+# Validate IP address format (basic validation)
+if ! [[ "$SERVER_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo -e "${RED}Error: Invalid IP address format${NC}"
+    exit 1
+fi
+
+# Get the TURN secret (skip prompt if TURN_SECRET is already set)
+if [[ -z "$TURN_SECRET" ]]; then
+    echo -e "${YELLOW}Enter a shared secret for the TURN server (press Enter to generate a random one):${NC}"
+    read -sp "> " TURN_SECRET
+    echo ""
+fi
+
+if [[ -z "$TURN_SECRET" ]]; then
+    TURN_SECRET=$(openssl rand -hex 32)
+    echo -e "${BLUE}Generated random TURN secret${NC}"
+fi
+
+# Telemetry opt-out (default: true)
+ENABLE_TELEMETRY="${ENABLE_TELEMETRY:-true}"
+
+echo ""
+echo -e "${GREEN}Configuration:${NC}"
+echo -e "  Server IP:     ${BLUE}$SERVER_IP${NC}"
+echo -e "  TURN Secret:   ${BLUE}********${NC}"
+echo ""
+
+# Create project directory and download compose file (skip when
+# DOGRAH_SKIP_DOWNLOAD=1 — e.g. e2e tests that already have a cloned repo).
+if [[ "$DOGRAH_SKIP_DOWNLOAD" != "1" ]]; then
+    mkdir -p dograh 2>/dev/null || true
+    cd dograh
+
+    echo -e "${BLUE}[1/5] Downloading docker-compose.yaml...${NC}"
+    curl -sS -o docker-compose.yaml https://raw.githubusercontent.com/dograh-hq/dograh/main/docker-compose.yaml
+    echo -e "${GREEN}✓ docker-compose.yaml downloaded${NC}"
+else
+    echo -e "${BLUE}[1/5] Using docker-compose.yaml in current directory${NC}"
+fi
+
+echo -e "${BLUE}[2/5] Creating nginx.conf...${NC}"
+cat > nginx.conf << 'NGINX_EOF'
+server {
+    listen 80;
+    server_name SERVER_IP_PLACEHOLDER;
+
+    # Redirect all HTTP to HTTPS
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name SERVER_IP_PLACEHOLDER;
+
+    ssl_certificate     /etc/nginx/certs/local.crt;
+    ssl_certificate_key /etc/nginx/certs/local.key;
+
+    # Basic TLS settings
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+
+    # Backend API and WebSockets — bypass the UI, go straight to api:8000
+    location /api/v1/ {
+        proxy_pass http://api:8000;
+        proxy_http_version 1.1;
+
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+
+        # Long-lived WebSockets (audio streaming, signaling)
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+
+        # Don't buffer streamed responses
+        proxy_buffering off;
+        client_max_body_size 100M;
+    }
+
+    location / {
+        proxy_pass         http://ui:3010;
+        proxy_http_version 1.1;
+
+        # Important for WebSockets / hot reload etc.
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+
+        # Rewrite localhost MinIO URLs in API responses to use current domain
+        sub_filter 'http://localhost:9000/voice-audio/' 'https://$host/voice-audio/';
+        sub_filter_once off;
+        sub_filter_types application/json text/html;
+    }
+
+    location /voice-audio/ {
+        proxy_pass http://minio:9000/voice-audio/;
+
+        proxy_http_version 1.1;
+
+        # Headers for file downloads from MinIO
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+
+        # Allow large file downloads
+        proxy_buffering off;
+        client_max_body_size 100M;
+    }
+}
+NGINX_EOF
+
+# Replace placeholder with actual IP
+sed -i.bak "s/SERVER_IP_PLACEHOLDER/$SERVER_IP/g" nginx.conf && rm -f nginx.conf.bak
+echo -e "${GREEN}✓ nginx.conf created${NC}"
+
+echo -e "${BLUE}[3/5] Creating SSL certificate generation script...${NC}"
+cat > generate_certificate.sh << CERT_EOF
+#!/bin/bash
+mkdir -p certs
+openssl req -x509 -nodes -newkey rsa:2048 \\
+  -keyout certs/local.key \\
+  -out certs/local.crt \\
+  -days 365 \\
+  -subj "/CN=$SERVER_IP"
+CERT_EOF
+chmod +x generate_certificate.sh
+echo -e "${GREEN}✓ generate_certificate.sh created${NC}"
+
+echo -e "${BLUE}[4/5] Generating SSL certificates...${NC}"
+./generate_certificate.sh
+echo -e "${GREEN}✓ SSL certificates generated${NC}"
+
+echo -e "${BLUE}[5/6] Creating TURN server configuration...${NC}"
+cat > turnserver.conf << TURN_EOF
+# Coturn TURN Server - Docker Configuration
+# Auto-generated by setup_remote.sh
+
+# Listener ports
+listening-port=3478
+tls-listening-port=5349
+
+# Relay port range
+min-port=49152
+max-port=49200
+
+# Network - external IP for NAT traversal
+external-ip=$SERVER_IP
+
+# Realm
+realm=dograh.com
+
+# Authentication (TURN REST API with time-limited credentials)
+use-auth-secret
+static-auth-secret=$TURN_SECRET
+
+# Security
+fingerprint
+no-cli
+no-multicast-peers
+
+# Logging
+log-file=stdout
+TURN_EOF
+echo -e "${GREEN}✓ turnserver.conf created${NC}"
+
+echo -e "${BLUE}[6/6] Creating environment file...${NC}"
+OSS_JWT_SECRET=$(openssl rand -hex 32)
+
+cat > .env << ENV_EOF
+# Backend API endpoint (public URL the backend uses to build webhook/embed links)
+BACKEND_API_ENDPOINT=https://$SERVER_IP
+
+# Public URL browsers use to fetch objects from MinIO (proxied by nginx)
+MINIO_PUBLIC_ENDPOINT=https://$SERVER_IP
+
+# TURN Server Configuration (time-limited credentials via TURN REST API)
+TURN_HOST=$SERVER_IP
+TURN_SECRET=$TURN_SECRET
+
+# JWT secret for OSS authentication
+OSS_JWT_SECRET=$OSS_JWT_SECRET
+
+# Telemetry (set to false to disable)
+ENABLE_TELEMETRY=$ENABLE_TELEMETRY
+ENV_EOF
+echo -e "${GREEN}✓ .env file created${NC}"
+
+echo ""
+echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║                    Setup Complete!                           ║${NC}"
+echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "Files created in ${BLUE}$(pwd)${NC}:"
+echo "  - docker-compose.yaml"
+echo "  - nginx.conf"
+echo "  - turnserver.conf"
+echo "  - generate_certificate.sh"
+echo "  - certs/local.crt"
+echo "  - certs/local.key"
+echo "  - .env"
+echo ""
+echo -e "${YELLOW}To start Dograh, run:${NC}"
+echo ""
+echo -e "  ${BLUE}sudo docker compose --profile remote up --pull always${NC}"
+echo ""
+echo -e "${YELLOW}Your application will be available at:${NC}"
+echo ""
+echo -e "  ${BLUE}https://$SERVER_IP${NC}"
+echo ""
+echo -e "${YELLOW}Note:${NC} Your browser will show a security warning for the self-signed"
+echo "certificate. You can safely accept it to proceed."
+echo ""

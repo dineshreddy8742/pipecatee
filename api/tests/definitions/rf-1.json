@@ -1,0 +1,164 @@
+{
+    "nodes": [
+        {
+            "id": "915",
+            "type": "agentNode",
+            "position": {
+                "x": 633,
+                "y": 324
+            },
+            "data": {
+                "prompt": "You are a voice agent whose mode of speaking is voice. Ask the user whether they want to talk to a sales guy or a customer service agent",
+                "name": "Agent"
+            },
+            "measured": {
+                "width": 300,
+                "height": 100
+            },
+            "selected": false,
+            "dragging": false
+        },
+        {
+            "id": "7598",
+            "type": "agentNode",
+            "position": {
+                "x": 460.1247806640531,
+                "y": 610.3714977079578
+            },
+            "data": {
+                "prompt": "You are a customer service agent whose mode of communication with the user is voice. Tell them that someone from our team will reach out to them soon",
+                "name": "Agent"
+            },
+            "measured": {
+                "width": 300,
+                "height": 100
+            },
+            "selected": false,
+            "dragging": false
+        },
+        {
+            "id": "6919",
+            "type": "agentNode",
+            "position": {
+                "x": 914.666735413607,
+                "y": 642.9800281289787
+            },
+            "data": {
+                "prompt": "You are a sales representative whose mode of communication with the user is voice. Tell the user that someone from our team will reach out to you soon",
+                "name": "Agent"
+            },
+            "measured": {
+                "width": 300,
+                "height": 100
+            },
+            "selected": false,
+            "dragging": false
+        },
+        {
+            "id": "6581",
+            "type": "startCall",
+            "position": {
+                "x": 648,
+                "y": 35
+            },
+            "data": {
+                "prompt": "Hello, I am Abhishek from Dograh. ",
+                "is_static": true,
+                "name": "Start Call",
+                "is_start": true
+            },
+            "measured": {
+                "width": 300,
+                "height": 100
+            },
+            "selected": false,
+            "dragging": false
+        },
+        {
+            "id": "1802",
+            "type": "endCall",
+            "position": {
+                "x": 666.7733431033548,
+                "y": 987.4345801025363
+            },
+            "data": {
+                "prompt": "Thank you for calling Dograh. Have a great day!",
+                "is_static": true,
+                "name": "End Call"
+            },
+            "measured": {
+                "width": 300,
+                "height": 100
+            },
+            "selected": false,
+            "dragging": false
+        }
+    ],
+    "edges": [
+        {
+            "animated": true,
+            "type": "custom",
+            "source": "915",
+            "target": "7598",
+            "id": "xy-edge__915-7598",
+            "selected": false,
+            "data": {
+                "condition": "The customer wants to talk to a customer service agent",
+                "label": "customer service agent"
+            }
+        },
+        {
+            "animated": true,
+            "type": "custom",
+            "source": "915",
+            "target": "6919",
+            "id": "xy-edge__915-6919",
+            "selected": false,
+            "data": {
+                "condition": "customer wants to talk to a sales representative",
+                "label": "sales representative"
+            }
+        },
+        {
+            "animated": true,
+            "type": "custom",
+            "source": "6581",
+            "target": "915",
+            "id": "xy-edge__6581-915",
+            "selected": false,
+            "data": {
+                "condition": "Always take this route",
+                "label": "Always take this route"
+            }
+        },
+        {
+            "animated": true,
+            "type": "custom",
+            "source": "7598",
+            "target": "1802",
+            "id": "xy-edge__7598-1802",
+            "selected": false,
+            "data": {
+                "condition": "end call",
+                "label": "end call"
+            }
+        },
+        {
+            "animated": true,
+            "type": "custom",
+            "source": "6919",
+            "target": "1802",
+            "id": "xy-edge__6919-1802",
+            "selected": false,
+            "data": {
+                "condition": "end call",
+                "label": "end call"
+            }
+        }
+    ],
+    "viewport": {
+        "x": 0,
+        "y": 0,
+        "zoom": 1
+    }
+}
