@@ -9,9 +9,9 @@ def main():
     if not os.path.exists(TARGET_DIR):
         os.makedirs(TARGET_DIR)
     else:
-        # Clear old files but preserve the .git and .github repository configurations!
+        # Clear old files but preserve the .git, .github and README.md repository configurations!
         for item in os.listdir(TARGET_DIR):
-            if item in (".git", ".github"):
+            if item in (".git", ".github", "README.md"):
                 continue
             item_path = os.path.join(TARGET_DIR, item)
             if os.path.isdir(item_path):
