@@ -108,6 +108,10 @@ ENTRYPOINT ["/app/entrypoint.sh"]
     entrypoint_content = """#!/bin/bash
 set -e
 
+# Set environment variables for the application
+export DATABASE_URL="postgresql+asyncpg://dograh:dineshadmissionspassword123@localhost:5432/dograh"
+export REDIS_URL="redis://localhost:6379"
+
 echo "Starting PostgreSQL..."
 mkdir -p /var/run/postgresql
 chown -R postgres:postgres /var/run/postgresql
@@ -140,7 +144,7 @@ echo "Starting Asterisk..."
 asterisk
 
 echo "Running Alembic Database Migrations..."
-cd /app
+cd /app/api
 python -m alembic upgrade head || true
 
 echo "Starting FastAPI Uvicorn Application on port 7860..."
